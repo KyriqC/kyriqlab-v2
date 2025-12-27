@@ -1,0 +1,29 @@
+# Dependencies
+node_modules
+.pnpm-store
+
+# Environment Variables & Secrets (CRITICAL)
+.env
+.env.*
+!.env.example
+docker/.env
+backend/.env
+frontend/.env
+
+# Build Output
+dist/
+build/
+coverage/
+
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# Docker volumes (if locally mapped)
+mongo-data/
+uploads/

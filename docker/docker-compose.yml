@@ -1,0 +1,74 @@
+services:
+  # 1. Database (Now Secured)
+  mongo:
+    image: mongo:7
+    container_name: kyriqlab-mongo
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_DATABASE: kyriqlab
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+    volumes:
+      - kyriqlab_mongo_data:/data/db
+      - ./mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
+    networks:
+      - kyriqlab_net
+    command: ["mongod", "--auth"] # Enforce password
+
+  # 2. Backend API
+  kyriqlab-api:
+    build: ../backend
+    container_name: kyriqlab-api
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    restart: unless-stopped
+    env_file:
+      - ../backend/.env
+    # We override the MONGO_URI in .env with the secure one here if needed,
+    # or just ensure your .env file has the right string.
+    volumes:
+      - kyriqlab_uploads:/app/uploads
+    networks:
+      - kyriqlab_net
+    depends_on:
+      - mongo
+
+  # 3. Nginx (Frontend + Proxy)
+  nginx:
+    image: nginx:alpine
+    container_name: kyriqlab-nginx
+    restart: unless-stopped
+    volumes:
+      # Mount the config we just made
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      # Mount the BUILT Vue files (You must run 'npm run build' first!)
+      - ../frontend/dist:/usr/share/nginx/html:ro 
+    ports:
+      - "80:80" # Exposed to host so Cloudflare Tunnel can see it (or keep closed if using internal tunnel networking)
+    depends_on:
+      - kyriqlab-api
+    networks:
+      - kyriqlab_net
+
+  # 4. Cloudflare Tunnel (Zero Trust)
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: kyriqlab-tunnel
+    restart: unless-stopped
+    command: tunnel run
+    environment:
+      - TUNNEL_TOKEN=${TUNNEL_TOKEN}
+    networks:
+      - kyriqlab_net
+
+volumes:
+  kyriqlab_mongo_data:
+    external: true
+    name: docker_kyriqlab_mongo_data
+  kyriqlab_uploads:
+    external: true
+    name: kyriqlab_uploads
+
+networks:
+  kyriqlab_net:

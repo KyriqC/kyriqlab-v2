@@ -1,0 +1,336 @@
+const express = require('express');
+const asyncHandler = require('../middleware/asyncHandler');
+const requireAdminKey = require('../middleware/requireAdminKey');
+
+const router = express.Router();
+
+// Genius API base URL
+const GENIUS_API = 'https://api.genius.com';
+const GENIUS_TOKEN = process.env.GENIUS_ACCESS_TOKEN || '';
+
+// Helper to make Genius API requests
+async function geniusRequest(endpoint, params = {}) {
+  if (!GENIUS_TOKEN) {
+    throw new Error('GENIUS_ACCESS_TOKEN not configured');
+  }
+
+  const url = new URL(`${GENIUS_API}${endpoint}`);
+  Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
+
+  const res = await fetch(url.toString(), {
+    headers: {
+      'Authorization': `Bearer ${GENIUS_TOKEN}`,
+    },
+  });
+
+  if (!res.ok) {
+    throw new Error(`Genius API error: ${res.status}`);
+  }
+
+  return res.json();
+}
+
+// Helper to clean lyrics text
+function cleanLyrics(rawLyrics) {
+  if (!rawLyrics) return '';
+  
+  let lyrics = rawLyrics
+    // Remove the data-lyrics-container HTML artifacts
+    .replace(/data-lyrics-container="true"[^>]*>/gi, '')
+    .replace(/<[^>]+>/g, '')
+    // Remove common Genius artifacts
+    .replace(/\d+\s*Contributors?/gi, '')
+    .replace(/Translations?/gi, '')
+    .replace(/You might also like/gi, '')
+    .replace(/See [^\n]+ Live/gi, '')
+    .replace(/Get tickets as low as \$\d+/gi, '')
+    .replace(/Embed/gi, '')
+    // Decode HTML entities
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#x27;/g, "'")
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, ' ')
+    // Clean up whitespace
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/^\s+|\s+$/g, '')
+    .trim();
+
+  return lyrics;
+}
+
+// Helper to extract lyrics from Genius page
+async function fetchLyrics(songUrl) {
+  try {
+    const res = await fetch(songUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      }
+    });
+    if (!res.ok) return '';
+
+    const html = await res.text();
+    
+    // Extract all text between lyrics containers
+    const containerRegex = /data-lyrics-container="true"[^>]*>([\s\S]*?)(?=<div|$)/gi;
+    let match;
+    const parts = [];
+    
+    while ((match = containerRegex.exec(html)) !== null) {
+      parts.push(match[1]);
+    }
+    
+    let lyrics = '';
+    if (parts.length > 0) {
+      lyrics = parts.join('\n');
+    } else {
+      const lyricsMatch = html.match(/class="Lyrics__Container[^"]*"[^>]*>([\s\S]*?)<\/div>/gi);
+      if (lyricsMatch) {
+        lyrics = lyricsMatch.join('\n');
+      }
+    }
+    
+    // Clean up the lyrics
+    lyrics = lyrics
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<a[^>]*>([\s\S]*?)<\/a>/gi, '$1')
+      .replace(/<span[^>]*>([\s\S]*?)<\/span>/gi, '$1')
+      .replace(/<i[^>]*>([\s\S]*?)<\/i>/gi, '$1')
+      .replace(/<b[^>]*>([\s\S]*?)<\/b>/gi, '$1');
+    
+    return cleanLyrics(lyrics);
+  } catch (e) {
+    console.error('Failed to fetch lyrics:', e.message);
+    return '';
+  }
+}
+
+// GET /api/genius/search - Search for songs
+router.get(
+  '/search',
+  requireAdminKey,
+  asyncHandler(async (req, res) => {
+    const { q } = req.query;
+    
+    if (!q) {
+      return res.status(400).json({ error: 'Search query required' });
+    }
+
+    const data = await geniusRequest('/search', { q });
+    
+    const results = (data.response?.hits || []).map(hit => ({
+      id: hit.result.id,
+      title: hit.result.title,
+      artist: hit.result.primary_artist?.name || 'Unknown',
+      thumbnail: hit.result.song_art_image_thumbnail_url,
+      url: hit.result.url,
+      releaseDate: hit.result.release_date_for_display,
+    }));
+
+    res.json(results);
+  })
+);
+
+// GET /api/genius/song/:id - Get full song details
+router.get(
+  '/song/:id',
+  requireAdminKey,
+  asyncHandler(async (req, res) => {
+    const { id } = req.params;
+
+    const data = await geniusRequest(`/songs/${id}`);
+    const song = data.response?.song;
+
+    if (!song) {
+      return res.status(404).json({ error: 'Song not found' });
+    }
+
+    const lyrics = await fetchLyrics(song.url);
+
+    res.json({
+      id: song.id,
+      title: song.title,
+      artist: song.primary_artist?.name || 'Unknown',
+      album: song.album?.name || '',
+      year: song.release_date_for_display?.split(',').pop()?.trim() || 'Unknown',
+      coverUrl: song.song_art_image_url || song.album?.cover_art_url || '',
+      lyrics,
+      geniusUrl: song.url,
+    });
+  })
+);
+
+
+// GET /api/genius/albums/search - Search for albums (tuned: multi-query + /search -> /songs/:id)
+
+
+
+
+// GET /api/genius/album/:id - Get album tracks
+router.get(
+  '/album/:id',
+  requireAdminKey,
+  asyncHandler(async (req, res) => {
+    const { id } = req.params;
+
+    const albumData = await geniusRequest(`/albums/${id}`);
+    const album = albumData.response?.album;
+
+    if (!album) {
+      return res.status(404).json({ error: 'Album not found' });
+    }
+
+    const tracksData = await geniusRequest(`/albums/${id}/tracks`, { per_page: 50 });
+    const tracks = (tracksData.response?.tracks || []).map(track => ({
+      id: track.song.id,
+      title: track.song.title,
+      artist: track.song.primary_artist?.name || album.artist?.name || 'Unknown',
+      trackNumber: track.number,
+    }));
+
+    res.json({
+      id: album.id,
+      name: album.name,
+      artist: album.artist?.name || 'Unknown',
+      coverUrl: album.cover_art_url,
+      releaseDate: album.release_date_for_display,
+      year: album.release_date_for_display?.split(',').pop()?.trim() || 'Unknown',
+      tracks,
+    });
+  })
+);
+
+// POST /api/genius/import-song - Import single song
+router.post(
+  '/import-song',
+  requireAdminKey,
+  asyncHandler(async (req, res) => {
+    const { geniusId, genre = 'Hip-Hop' } = req.body;
+
+    if (!geniusId) {
+      return res.status(400).json({ error: 'Genius song ID required' });
+    }
+
+    const data = await geniusRequest(`/songs/${geniusId}`);
+    const gSong = data.response?.song;
+
+    if (!gSong) {
+      return res.status(404).json({ error: 'Song not found on Genius' });
+    }
+
+    const lyrics = await fetchLyrics(gSong.url);
+    const Song = require('../models/Song');
+
+    // Check if already exists
+    const titleEscaped = gSong.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const artistEscaped = (gSong.primary_artist?.name || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    
+    const existing = await Song.findOne({
+      title: { $regex: `^${titleEscaped}$`, $options: 'i' },
+      artist: { $regex: `^${artistEscaped}$`, $options: 'i' },
+    });
+
+    if (existing) {
+      return res.status(409).json({ error: 'Song already exists', existing });
+    }
+
+    const song = await Song.create({
+      title: gSong.title,
+      artist: gSong.primary_artist?.name || 'Unknown',
+      album: gSong.album?.name || '',
+      year: gSong.release_date_for_display?.split(',').pop()?.trim() || 'Unknown',
+      genre,
+      lyrics,
+      geniusId: String(gSong.id),
+      coverUrl: gSong.song_art_image_url || gSong.album?.cover_art_url || '',
+    });
+
+    res.status(201).json(song);
+  })
+);
+
+// POST /api/genius/import-album - Import full album
+router.post(
+  '/import-album',
+  requireAdminKey,
+  asyncHandler(async (req, res) => {
+    const { albumId, genre = 'Hip-Hop' } = req.body;
+
+    if (!albumId) {
+      return res.status(400).json({ error: 'Album ID required' });
+    }
+
+    const albumData = await geniusRequest(`/albums/${albumId}`);
+    const album = albumData.response?.album;
+
+    if (!album) {
+      return res.status(404).json({ error: 'Album not found' });
+    }
+
+    const tracksData = await geniusRequest(`/albums/${albumId}/tracks`, { per_page: 50 });
+    const tracks = tracksData.response?.tracks || [];
+
+    const Song = require('../models/Song');
+    const results = {
+      album: album.name,
+      artist: album.artist?.name,
+      total: tracks.length,
+      imported: 0,
+      skipped: 0,
+      errors: [],
+    };
+
+    for (const track of tracks) {
+      try {
+        const geniusId = track.song.id;
+        const title = track.song.title;
+        const artist = track.song.primary_artist?.name || album.artist?.name || 'Unknown';
+
+        const titleEscaped = title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const artistEscaped = artist.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        
+        const existing = await Song.findOne({
+          title: { $regex: `^${titleEscaped}$`, $options: 'i' },
+          artist: { $regex: `^${artistEscaped}$`, $options: 'i' },
+        });
+
+        if (existing) {
+          results.skipped++;
+          continue;
+        }
+
+        const songData = await geniusRequest(`/songs/${geniusId}`);
+        const gSong = songData.response?.song;
+
+        if (!gSong) {
+          results.errors.push({ title, error: 'Not found on Genius' });
+          continue;
+        }
+
+        await new Promise(r => setTimeout(r, 800));
+        const lyrics = await fetchLyrics(gSong.url);
+
+        await Song.create({
+          title: gSong.title,
+          artist,
+          album: album.name,
+          year: album.release_date_for_display?.split(',').pop()?.trim() || 'Unknown',
+          genre,
+          lyrics,
+          geniusId: String(geniusId),
+          coverUrl: gSong.song_art_image_url || album.cover_art_url || '',
+        });
+
+        results.imported++;
+      } catch (e) {
+        results.errors.push({ title: track.song.title, error: e.message });
+      }
+    }
+
+    res.json(results);
+  })
+);
+
+module.exports = router;
