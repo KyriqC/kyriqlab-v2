@@ -37,7 +37,7 @@
           </div>
         </div>
 
-        <!-- Right: Profile Image Placeholder -->
+        <!-- Right: Profile Image -->
         <div class="flex justify-center lg:justify-end">
           <div class="relative">
             <div
@@ -98,12 +98,27 @@
     <section class="max-w-6xl mx-auto px-4 py-12">
       <h2 class="text-2xl font-semibold mb-6">Featured Projects</h2>
       <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <div
+        <a
           v-for="project in projects"
           :key="project.title"
-          class="k-card p-5 flex flex-col"
+          :href="project.link"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="project-card k-card p-5 flex flex-col transition-all duration-300 ease-out hover:-translate-y-1 hover:border-[#00A651]/50 hover:shadow-[0_0_20px_rgba(0,166,81,0.15)]"
         >
-          <h3 class="text-lg font-semibold">{{ project.title }}</h3>
+          <div class="flex items-start justify-between">
+            <h3 class="text-lg font-semibold">{{ project.title }}</h3>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-5 w-5 opacity-50 transition-opacity duration-300 group-hover:opacity-100"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              stroke-width="1.5"
+            >
+              <path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+            </svg>
+          </div>
           <p class="mt-2 text-sm opacity-70 flex-1">{{ project.description }}</p>
           <div class="mt-4 flex flex-wrap gap-2">
             <span
@@ -114,7 +129,7 @@
               {{ tag }}
             </span>
           </div>
-        </div>
+        </a>
       </div>
     </section>
 
@@ -158,8 +173,8 @@ import { onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { fetchPosts } from '../services/content'
 
-// TODO: Replace with your actual profile image URL after uploading
-const profileImage = ref('')
+// Profile image served via Nginx from /uploads directory
+const profileImage = ref('/uploads/image_1e4cc7.jpg')
 
 const statusCards = ref([
   { name: 'Portfolio Site', online: true },
@@ -185,16 +200,19 @@ const projects = [
     title: 'Cloud Order Management System',
     description: 'Led a team of 8 to build a Vue.js/Node.js dashboard for a bakery, reducing order errors by 80%. Designed data flow diagrams and managed the SDLC.',
     tags: ['Vue.js', 'Systems Analysis', 'Team Lead'],
+    link: 'https://github.com/kyriqcole/cloud-order-system',
   },
   {
     title: 'Empathy Survey App',
     description: 'Full-stack application measuring empathy traits with complex scoring logic and accessibility features.',
     tags: ['Node.js', 'EJS', 'MongoDB'],
+    link: 'https://github.com/kyriqcole/empathy-survey',
   },
   {
     title: 'Python Automation Bot',
     description: 'Automated typing bot using Selenium that interacts with web elements at adjustable human-like speeds.',
     tags: ['Python', 'Selenium', 'Automation'],
+    link: 'https://github.com/kyriqcole/automation-bot',
   },
 ]
 
@@ -218,3 +236,13 @@ onMounted(async () => {
   }
 })
 </script>
+
+<style scoped>
+.project-card {
+  cursor: pointer;
+}
+
+.project-card:hover svg {
+  opacity: 1;
+}
+</style>

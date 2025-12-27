@@ -1,9 +1,10 @@
 services:
-  # 1. Database (Now Secured)
+  # 1. Database
   mongo:
     image: mongo:7
     container_name: kyriqlab-mongo
     restart: unless-stopped
+    command: ["mongod", "--auth"]
     environment:
       MONGO_INITDB_DATABASE: kyriqlab
       MONGO_INITDB_ROOT_USERNAME: root
@@ -12,10 +13,9 @@ services:
       - kyriqlab_mongo_data:/data/db
       - ./mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
     networks:
-      - kyriqlab_net
-    command: ["mongod", "--auth"] # Enforce password
+      - backend_net  # Internal DB network (secure)
 
-  # 2. Backend API
+# 2. Backend API
   kyriqlab-api:
     build: ../backend
     container_name: kyriqlab-api
@@ -25,12 +25,11 @@ services:
     restart: unless-stopped
     env_file:
       - ../backend/.env
-    # We override the MONGO_URI in .env with the secure one here if needed,
-    # or just ensure your .env file has the right string.
     volumes:
       - kyriqlab_uploads:/app/uploads
     networks:
-      - kyriqlab_net
+      - backend_net  # To talk to Mongo
+      - proxy_net    # To talk to Nginx (and potentially Tunnel)
     depends_on:
       - mongo
 
@@ -40,27 +39,17 @@ services:
     container_name: kyriqlab-nginx
     restart: unless-stopped
     volumes:
-      # Mount the config we just made
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
-      # Mount the BUILT Vue files (You must run 'npm run build' first!)
-      - ../frontend/dist:/usr/share/nginx/html:ro 
-    ports:
-      - "80:80" # Exposed to host so Cloudflare Tunnel can see it (or keep closed if using internal tunnel networking)
+      - ../frontend/dist:/usr/share/nginx/html:ro
+    # No ports needed! The Tunnel talks to this container directly.
+    # ports:
+    #   - "80:80" 
     depends_on:
       - kyriqlab-api
     networks:
-      - kyriqlab_net
+      - proxy_net
 
-  # 4. Cloudflare Tunnel (Zero Trust)
-  tunnel:
-    image: cloudflare/cloudflared:latest
-    container_name: kyriqlab-tunnel
-    restart: unless-stopped
-    command: tunnel run
-    environment:
-      - TUNNEL_TOKEN=${TUNNEL_TOKEN}
-    networks:
-      - kyriqlab_net
+# REMOVED: tunnel service (Moving to central infrastructure)
 
 volumes:
   kyriqlab_mongo_data:
@@ -71,4 +60,6 @@ volumes:
     name: kyriqlab_uploads
 
 networks:
-  kyriqlab_net:
+  proxy_net:
+    external: true  # Use the network we created in Step 1
+  backend_net:      # Keep DB traffic private
