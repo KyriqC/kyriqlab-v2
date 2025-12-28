@@ -40,7 +40,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
-deploy:
+  deploy:
     needs: build-and-push
     runs-on: self-hosted
     steps:
