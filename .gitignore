@@ -3,6 +3,7 @@ node_modules
 .pnpm-store
 
 # Environment Variables & Secrets (CRITICAL)
+.secrets
 .env
 .env.*
 !.env.example
@@ -27,3 +28,5 @@ Thumbs.db
 # Docker volumes (if locally mapped)
 mongo-data/
 uploads/
+
+*.sh
