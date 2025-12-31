@@ -1,6 +1,10 @@
+import LoginCallback from '../pages/LoginCallback.vue';
 import { createRouter, createWebHistory } from 'vue-router'
 import { isLoggedIn } from '../services/auth'
 
+
+import LabReports from '../pages/LabReports.vue'
+import ReportReader from '../pages/ReportReader.vue'
 import Home from '../pages/Home.vue'
 import PostDetail from '../pages/PostDetail.vue'
 import Notepad from '../pages/Notepad.vue'
@@ -24,6 +28,8 @@ const router = createRouter({
     { path: '/notepad', component: Notepad },
     { path: '/blog', redirect: '/notepad' },
     { path: '/posts/:slug', component: PostDetail },
+    { path: '/reports', component: LabReports },
+{ path: '/reports/:id', component: ReportReader },
 
     // Song routes
     { path: '/song-library', component: SongLibrary },
@@ -48,6 +54,7 @@ const router = createRouter({
 
     // Auth
     { path: '/login', component: Login },
+    { path: '/login/callback', component: LoginCallback },
     { path: '/admin', component: Admin, meta: { requiresAuth: true } },
   ],
   scrollBehavior() {

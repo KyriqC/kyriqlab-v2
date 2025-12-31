@@ -4,7 +4,7 @@ services:
     image: mongo:7
     container_name: kyriqlab-mongo
     restart: unless-stopped
-    command: ["mongod", "--auth"]
+#    command: ["mongod", "--auth"]
     environment:
       MONGO_INITDB_DATABASE: kyriqlab
       MONGO_INITDB_ROOT_USERNAME: root

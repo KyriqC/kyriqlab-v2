@@ -1,6 +1,5 @@
 <template>
   <div class="grid lg:grid-cols-3 gap-6">
-    <!-- LEFT: LIST -->
     <div class="lg:col-span-1 k-card p-5">
       <div class="flex items-center justify-between">
         <div class="font-semibold">Posts</div>
@@ -26,7 +25,6 @@
       </div>
     </div>
 
-    <!-- RIGHT: EDITOR -->
     <div class="lg:col-span-2 k-card p-5">
       <div class="flex items-center justify-between gap-4">
         <div class="font-semibold">Editor</div>
@@ -77,11 +75,10 @@
         <input v-model="form.summary" class="k-inp mt-2" placeholder="Short summary" />
       </div>
 
-      <!-- Image Uploads -->
       <div class="mt-6 grid md:grid-cols-2 gap-4">
         <div>
           <label class="text-sm opacity-80">Featured image</label>
-          <input type="file" accept="image/*" class="k-inp mt-2" @change="uploadFeatured" />
+          <input type="file" accept="image/*,.heic" class="k-inp mt-2" @change="uploadFeatured" />
 
           <div class="mt-3">
             <div v-if="featuredPreview || form.featuredImageUrl" class="rounded-xl border border-white/10 p-2 bg-white/5">
@@ -95,7 +92,7 @@
 
         <div>
           <label class="text-sm opacity-80">Gallery images (multiple)</label>
-          <input type="file" accept="image/*" multiple class="k-inp mt-2" @change="uploadGallery" />
+          <input type="file" accept="image/*,.heic" multiple class="k-inp mt-2" @change="uploadGallery" />
 
           <div class="mt-3">
             <div
@@ -130,6 +127,7 @@
 <script setup>
 import { onMounted, ref, defineExpose } from 'vue'
 import { api, uploadImage } from '../../services/api'
+import heic2any from 'heic2any' // Import the converter
 
 const emit = defineEmits(['toast', 'error'])
 
@@ -240,14 +238,36 @@ async function remove() {
   }
 }
 
+// HELPER: Convert HEIC to JPG
+async function processFile(file) {
+  if (file.type === "image/heic" || file.name.toLowerCase().endsWith(".heic")) {
+    try {
+      emit('toast', 'Converting iPhone photo...')
+      const blob = await heic2any({ blob: file, toType: "image/jpeg", quality: 0.8 })
+      return new File([blob], file.name.replace(/\.heic$/i, ".jpg"), { type: "image/jpeg" })
+    } catch (e) {
+      console.error(e)
+      throw new Error("Could not convert HEIC image")
+    }
+  }
+  return file
+}
+
 async function uploadFeatured(e) {
-  const file = e.target.files?.[0]
+  let file = e.target.files?.[0]
   if (!file) return
 
-  featuredPreview.value = URL.createObjectURL(file)
   try {
+    // 1. Process (Convert if HEIC)
+    file = await processFile(file)
+    
+    // 2. Preview
+    featuredPreview.value = URL.createObjectURL(file)
+    
+    // 3. Upload
     const { url } = await uploadImage(file)
     form.value.featuredImageUrl = url
+    emit('toast', 'Featured image uploaded ✅')
   } catch (err) {
     emit('error', 'Upload failed', err?.message)
   }
@@ -255,19 +275,32 @@ async function uploadFeatured(e) {
 }
 
 async function uploadGallery(e) {
-  const files = Array.from(e.target.files || [])
-  if (!files.length) return
-
-  galleryPreviews.value = files.map(f => URL.createObjectURL(f))
+  const rawFiles = Array.from(e.target.files || [])
+  if (!rawFiles.length) return
 
   try {
+    const processedFiles = []
+    
+    // 1. Process all files
+    for (const f of rawFiles) {
+      processedFiles.push(await processFile(f))
+    }
+
+    // 2. Update Previews
+    galleryPreviews.value = processedFiles.map(f => URL.createObjectURL(f))
+    emit('toast', `Uploading ${processedFiles.length} images...`)
+
+    // 3. Upload loop
     const uploaded = []
-    for (const f of files) {
+    for (const f of processedFiles) {
       const { url } = await uploadImage(f)
       uploaded.push(url)
     }
+    
     form.value.galleryImages = [...(form.value.galleryImages || []), ...uploaded]
     galleryPreviews.value = []
+    emit('toast', 'Gallery upload complete ✅')
+
   } catch (err) {
     emit('error', 'Upload failed', err?.message)
   }

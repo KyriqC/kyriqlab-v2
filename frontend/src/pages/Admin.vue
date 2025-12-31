@@ -1,6 +1,5 @@
 <template>
   <section class="max-w-6xl mx-auto px-4 py-10">
-    <!-- Header -->
     <div class="flex items-center justify-between gap-4">
       <div>
         <h1 class="text-3xl font-semibold">
@@ -10,12 +9,16 @@
       </div>
 
       <div class="flex items-center gap-3">
-        <RouterLink class="k-btn2" to="/login">Change Key</RouterLink>
+        <RouterLink
+          class="px-4 py-2 rounded-lg font-semibold text-sm transition bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 hover:border-red-500/40"
+          to="/login"
+        >
+          Logout
+        </RouterLink>
         <button class="k-btn2" @click="refresh">Refresh</button>
       </div>
     </div>
 
-    <!-- Tabs -->
     <div class="mt-6 flex gap-2 border-b border-white/10 pb-2">
       <button
         v-for="tab in tabs"
@@ -30,19 +33,17 @@
       </button>
     </div>
 
-    <!-- Toast -->
-    <div v-if="toast" class="mt-5 k-card p-4 border-[#00A651]/30 bg-[#00A651]/10">
+    <div v-if="toast" class="mt-5 k-card p-4 border-[#00A651]/30 bg-[#00A651]/10 flex justify-between items-center">
       <div class="text-sm">{{ toast }}</div>
+      <button @click="toast = ''" class="ml-4 opacity-50 hover:opacity-100 text-lg leading-none">&times;</button>
     </div>
-
-    <!-- Error -->
+    
     <div v-if="error" class="mt-5 k-card p-4 border-red-500/30 bg-red-500/10">
       <div class="font-semibold text-red-400">Error</div>
       <div class="opacity-80 text-sm mt-1">{{ error }}</div>
       <pre v-if="detail" class="opacity-70 text-xs mt-2 whitespace-pre-wrap">{{ detail }}</pre>
     </div>
 
-    <!-- Posts Tab -->
     <div v-if="activeTab === 'posts'" class="mt-6">
       <PostsManager
         ref="postsManager"
@@ -51,10 +52,17 @@
       />
     </div>
 
-    <!-- Songs Tab -->
     <div v-if="activeTab === 'songs'" class="mt-6">
       <SongsManager
         ref="songsManager"
+        @toast="showToast"
+        @error="showError"
+      />
+    </div>
+
+    <div v-if="activeTab === 'reports'" class="mt-6">
+      <AdminReports
+        ref="reportsManager"
         @toast="showToast"
         @error="showError"
       />
@@ -67,10 +75,12 @@ import { ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import PostsManager from '../components/admin/PostsManager.vue'
 import SongsManager from '../components/admin/SongsManager.vue'
+import AdminReports from '../components/admin/AdminReports.vue'
 
 const tabs = [
   { id: 'posts', label: 'Posts' },
   { id: 'songs', label: 'Songs' },
+  { id: 'reports', label: 'Reports' },
 ]
 
 const activeTab = ref('posts')
@@ -80,12 +90,13 @@ const detail = ref('')
 
 const postsManager = ref(null)
 const songsManager = ref(null)
+const reportsManager = ref(null)
 
 function showToast(msg) {
   toast.value = msg
   error.value = ''
   detail.value = ''
-  setTimeout(() => (toast.value = ''), 2000)
+  setTimeout(() => { toast.value = '' }, 3000)
 }
 
 function showError(msg, details = '') {
@@ -99,6 +110,10 @@ function refresh() {
     postsManager.value?.loadAll()
   } else if (activeTab.value === 'songs') {
     songsManager.value?.loadAll()
+  } else if (activeTab.value === 'reports') {
+    // If AdminReports doesn't expose a load method,
+    // switching tabs forces a reload anyway.
+    reportsManager.value?.loadReports?.()
   }
 }
 </script>
