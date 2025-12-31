@@ -32,29 +32,34 @@ router.get('/google/callback',
   passport.authenticate('google', { session: false, failureRedirect: '/login?error=failed' }),
   (req, res) => {
     const user = req.user;
-    const email = user.emails[0].value;
+    // Force lowercase and trim spaces to avoid mismatch errors
+    const email = user.emails[0].value.toLowerCase().trim();
 
-    // --- ADMIN CHECK ---
-    // Replace 'YOUR_REAL_EMAIL@gmail.com' with your actual email
-    // If the email matches, we send the ADMIN KEY to the frontend
-    const ADMIN_EMAIL = 'kyriqc@gmail.com'; // CHANGE THIS TO YOUR EMAIL!
+    console.log('------------------------------------------------');
+    console.log('LOGIN ATTEMPT:', email);
+    console.log('ADMIN KEY STATUS:', process.env.ADMIN_API_KEY ? 'Loaded' : 'MISSING!');
+    console.log('------------------------------------------------');
+
+    // LIST YOUR ADMIN EMAILS HERE (All Lowercase!)
+    const ADMIN_EMAILS = [
+        'kyriqc@gmail.com', 
+        'kecole2@cougarnet.uh.edu'
+    ]; 
     
     let token;
     let isAdmin = false;
 
-    if (email === ADMIN_EMAIL) {
-      // It's YOU! Send the Admin API Key
+    if (ADMIN_EMAILS.includes(email)) {
+      console.log('SUCCESS: Admin User Identified');
       token = process.env.ADMIN_API_KEY; 
       isAdmin = true;
     } else {
-      // It's a visitor. Generate a simple "Visitor Token" (just a placeholder for now)
+      console.log('NOTICE: User treated as Visitor');
+      // It's a visitor. Generate a simple "Visitor Token"
       token = jwt.sign({ name: user.displayName, email: email, role: 'visitor' }, 'SECRET_VISITOR_KEY');
     }
 
-    // Redirect back to frontend with the token
-    // We encode it in the URL so the frontend can grab it
     res.redirect(`https://kyriqlab.com/login/callback?token=${token}&admin=${isAdmin}&name=${encodeURIComponent(user.displayName)}`);
   }
 );
-
 module.exports = router
